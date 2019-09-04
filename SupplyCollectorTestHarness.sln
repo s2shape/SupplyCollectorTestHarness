@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.28922.388
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SupplyCollectorTestHarness", "SupplyCollectorTestHarness.csproj", "{314ECAF6-43B3-4886-A933-C55A9B53C581}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{314ECAF6-43B3-4886-A933-C55A9B53C581}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{314ECAF6-43B3-4886-A933-C55A9B53C581}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{314ECAF6-43B3-4886-A933-C55A9B53C581}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{314ECAF6-43B3-4886-A933-C55A9B53C581}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {D2BC66A6-4E6E-43E5-805B-7097035DCD88}
+	EndGlobalSection
+EndGlobal
