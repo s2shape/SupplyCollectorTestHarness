@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using S2.BlackSwan.SupplyCollector;
 using S2.BlackSwan.SupplyCollector.Models;
@@ -34,6 +35,10 @@ namespace SupplyCollectorTestHarness
             TestGetSchema(supplyCollector, dataContainer, testInfo);
 
             TestCollectSample(supplyCollector, dataContainer, testInfo);
+
+            TestRandomSampling(supplyCollector, dataContainer, testInfo);
+
+            TestDataMetrics(supplyCollector, dataContainer, testInfo);
         }
 
         private static TestInfo GetTestInfoFromFile(string filename)
@@ -78,8 +83,11 @@ namespace SupplyCollectorTestHarness
                         case "collectsample":
                             testInfo.AddCollectSampleTest(lineParts);
                             break;
+                        case "randomsample":
+                            testInfo.AddRandomSampleTest(lineParts);
+                            break;
                         case "datacollectionmetrics":
-                            testInfo.DataCollectionRowCounts[lineParts[1].Trim()] = Convert.ToInt32(lineParts[2]);
+                            testInfo.AddMetricsTest(lineParts);
                             break;
                     }
                 }
@@ -176,8 +184,84 @@ namespace SupplyCollectorTestHarness
             }
             Console.WriteLine(" - success.");
             Console.WriteLine();
-            
         }
+
+        private static void TestRandomSampling(ISupplyCollector supplyCollector, DataContainer dataContainer, TestInfo testInfo) {
+            Console.Write("Testing CollectSample() - random sampling method");
+
+            foreach (var definition in testInfo.RandomSampleTestDefinitions)
+            {
+                DataCollection collection = new DataCollection(dataContainer, definition.DataCollectionName);
+                DataEntity entity = new DataEntity(definition.DataEntityName, DataType.String, "string", dataContainer, collection);
+
+                bool equals = true;
+
+                List<string> prevSamples = null;
+                for (int i = 0; i < 3; i++) {
+
+                    var samples = supplyCollector.CollectSample(entity, definition.SampleSize);
+                    if (samples.Count != definition.SampleSize) {
+                        throw new ApplicationException(
+                            $"The number of samples ({samples.Count}) from DataCollection '{definition.DataCollectionName}' does not match the expected value of {definition.SampleSize}.");
+                    }
+
+                    if (prevSamples != null) {
+                        equals = !samples.Except(prevSamples).Union(prevSamples.Except(samples)).Any();
+
+                        if (!equals)
+                            break;
+                    }
+
+                    prevSamples = samples;
+                }
+
+                if (equals) {
+                    throw new ApplicationException($"Samples from DataCollection '{definition.DataCollectionName}' are equal after 3 read attempts.");
+                }
+            }
+
+            Console.WriteLine(" - success.");
+            Console.WriteLine();
+        }
+
+        private static void TestDataMetrics(ISupplyCollector supplyCollector, DataContainer dataContainer, TestInfo testInfo)
+        {
+            Console.Write("Testing GetDataCollectionMetrics() ");
+
+            var metrics = supplyCollector.GetDataCollectionMetrics(dataContainer);
+
+            foreach (var definition in testInfo.DataMetricsTestDefinitions) {
+                var metric = metrics.Find(x => x.Name.Equals(definition.DataCollectionName));
+                if (metric == null)
+                {
+                    throw new ApplicationException($"Metric for DataCollection '{definition.DataCollectionName}' is not found.");
+                }
+
+                if (metric.RowCount != definition.RowCount) {
+                    throw new ApplicationException(
+                        $"Row count for DataCollection '{definition.DataCollectionName}' ({metric.RowCount}) does not match expected value {definition.RowCount}.");
+                }
+
+                var usedSpaceRounded = Math.Round(metric.UsedSpaceKB, definition.UsedSizePrecision);
+                var totalSpaceRounded = Math.Round(metric.TotalSpaceKB, definition.TotalSizePrecision);
+
+                if (!Decimal.Equals(definition.UsedSize, usedSpaceRounded)) {
+                    throw new ApplicationException(
+                    $"Used size for DataCollection '{definition.DataCollectionName}' ({usedSpaceRounded}, rounded from {metric.UsedSpaceKB}) does not match expected value {definition.UsedSize}.");
+                }
+
+                if (!Decimal.Equals(definition.TotalSize, totalSpaceRounded)) {
+                    throw new ApplicationException(
+                    $"Total size for DataCollection '{definition.DataCollectionName}' ({totalSpaceRounded}, rounded from {metric.TotalSpaceKB}) does not match expected value {definition.TotalSize}.");
+                }
+                
+            }
+            Console.WriteLine(" - success.");
+            Console.WriteLine();
+        }
+
+
+
         private class TestInfo
         {
             public string SupplyCollectorName { get; set; }
@@ -187,14 +271,15 @@ namespace SupplyCollectorTestHarness
             public int SchemaTableCount { get; set; }
             public int SchemaEntityCount { get; set; }
 
-            public Dictionary<string, int> DataCollectionRowCounts { get; }
-
             public List<CollectSampleTestDefinition> CollectSampleTestDefinitions { get; }
+            public List<RandomSampleTestDefinition> RandomSampleTestDefinitions { get; }
+            public List<DataMetricsTestDefinition> DataMetricsTestDefinitions { get; }
 
             public TestInfo()
             {
-                DataCollectionRowCounts = new Dictionary<string, int>();
                 CollectSampleTestDefinitions = new List<CollectSampleTestDefinition>();
+                RandomSampleTestDefinitions = new List<RandomSampleTestDefinition>();
+                DataMetricsTestDefinitions = new List<DataMetricsTestDefinition>();
             }
 
             public void AddCollectSampleTest(string[] definitionValues)
@@ -211,19 +296,64 @@ namespace SupplyCollectorTestHarness
 
                 CollectSampleTestDefinitions.Add(definition);
             }
+
+            public void AddRandomSampleTest(string[] definitionValues)
+            {
+                var definition = new RandomSampleTestDefinition();
+                definition.DataCollectionName = definitionValues[1].Trim();
+                definition.DataEntityName = definitionValues[2].Trim();
+                definition.SampleSize = Convert.ToInt32(definitionValues[3]);
+                
+                RandomSampleTestDefinitions.Add(definition);
+            }
+
+            public void AddMetricsTest(string[] definitionValues)
+            {
+                var definition = new DataMetricsTestDefinition();
+                definition.DataCollectionName = definitionValues[1].Trim();
+                definition.RowCount = Int64.Parse(definitionValues[2].Trim());
+                definition.TotalSize = Decimal.Parse(definitionValues[3].Trim());
+                if (definitionValues[3].IndexOf(".") > 0) {
+                    definition.TotalSizePrecision = definitionValues[3].Substring(definitionValues[3].IndexOf(".") + 1)
+                        .Trim().Length;
+                }
+                definition.UsedSize = Decimal.Parse(definitionValues[4].Trim());
+                if (definitionValues[4].IndexOf(".") > 0)
+                {
+                    definition.UsedSizePrecision = definitionValues[3].Substring(definitionValues[4].IndexOf(".") + 1)
+                        .Trim().Length;
+                }
+
+                DataMetricsTestDefinitions.Add(definition);
+            }
         }
 
-        private class CollectSampleTestDefinition
-        {
+        private class SampleTestDefinition {
             public string DataCollectionName { get; set; }
             public string DataEntityName { get; set; }
             public int SampleSize { get; set; }
+        }
+
+        private class CollectSampleTestDefinition : SampleTestDefinition
+        {
             public List<string> SampleValues { get; }
 
             public CollectSampleTestDefinition()
             {
                 SampleValues = new List<string>();
             }
+        }
+
+        private class RandomSampleTestDefinition : SampleTestDefinition {
+        }
+
+        private class DataMetricsTestDefinition {
+            public string DataCollectionName { get; set; }
+            public long RowCount { get; set; }
+            public decimal TotalSize { get; set; }
+            public int TotalSizePrecision { get; set; }
+            public decimal UsedSize { get; set; }
+            public int UsedSizePrecision { get; set; }
         }
     }
 }
