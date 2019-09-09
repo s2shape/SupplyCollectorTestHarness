@@ -1,8 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.Loader;
+using System.Threading;
 using S2.BlackSwan.SupplyCollector;
 using S2.BlackSwan.SupplyCollector.Models;
 
@@ -13,6 +16,9 @@ namespace SupplyCollectorTestHarness
         static void Main(string[] args)
         {
             string filename = "test_harness.config";
+            if (args.Length > 0) {
+                filename = args[args.Length - 1];
+            }
 
             TestInfo testInfo = GetTestInfoFromFile(filename);
 
@@ -20,13 +26,23 @@ namespace SupplyCollectorTestHarness
             Console.WriteLine();
 
             string supplyCollectorPath = Path.Combine(Environment.CurrentDirectory, testInfo.SupplyCollectorName + ".dll");
-
+            
             Assembly supplyCollectorAssembly = Assembly.LoadFile(supplyCollectorPath);
             Type supplyCollectorType = supplyCollectorAssembly.GetType(String.Format("{0}.{0}", testInfo.SupplyCollectorName));
 
             ISupplyCollector supplyCollector = (ISupplyCollector)Activator.CreateInstance(supplyCollectorType);
 
             DataContainer dataContainer = new DataContainer() {ConnectionString = testInfo.ConnectionString};
+
+            if (args.Length > 0) {
+                if ("-load-test".Equals(args[0], StringComparison.InvariantCultureIgnoreCase)) {
+                    int testIndex = Int32.Parse(args[1]);
+                    
+                    LoadTestEntryPoint(supplyCollector, dataContainer, testInfo, testIndex);
+                    return;
+                }
+            }
+
 
             TestDataStoreTypes(supplyCollector);
 
@@ -39,6 +55,81 @@ namespace SupplyCollectorTestHarness
             TestRandomSampling(supplyCollector, dataContainer, testInfo);
 
             TestDataMetrics(supplyCollector, dataContainer, testInfo);
+
+            TestMemoryUsageAndProcessingTime(testInfo);
+        }
+
+        private static void TestMemoryUsageAndProcessingTime(TestInfo testInfo) {
+            Console.Write("Testing memory usage ");
+            if (testInfo.LoadTestDefinitions.Count == 0) {
+                Console.WriteLine(" - skipped.");
+                Console.WriteLine();
+                return;
+            }
+
+            for (int i = 0; i < testInfo.LoadTestDefinitions.Count; i++) {
+                var definition = testInfo.LoadTestDefinitions[i];
+
+                Console.WriteLine();
+                Console.Write($"#{i}. Loading {definition.SampleSize} samples... ");
+                var process = Process.Start(Assembly.GetExecutingAssembly().Location, $"-load-test {i} {testInfo.SupplyCollectorName}");
+                if (process == null)
+                {
+                    throw new ApplicationException("Failed to start child process for load testing.");
+                }
+
+                while (!process.HasExited)
+                {
+                    //process.PrivateMemorySize64
+                    var totalTime = DateTime.Now.Subtract(process.StartTime);
+
+                    if (definition.MaxRunTimeSec > 0 && totalTime.TotalSeconds > definition.MaxRunTimeSec) {
+                        try {
+                            process.Kill();
+                        }
+                        catch (Exception) {
+                            /* ignore */
+                        }
+
+                        throw new ApplicationException(
+                            $"Process is running for {totalTime}, which is more than maximum of {definition.MaxRunTimeSec} seconds");
+                    }
+
+                    if (definition.MaxMemoryUsageMb > 0 &&
+                        process.WorkingSet64 / (1024 * 1024) > definition.MaxMemoryUsageMb) {
+                        try {
+                            process.Kill();
+                        }
+                        catch (Exception) {
+                            /* ignore */
+                        }
+
+                        throw new ApplicationException(
+                            $"Process consumes {process.WorkingSet64} bytes, which is more than maximum of {definition.MaxMemoryUsageMb} Mb");
+                    }
+
+                    Thread.Sleep(1000);
+                }
+
+                Console.WriteLine(" - success.");
+            }
+
+            Console.WriteLine("All load tests passed.");
+            Console.WriteLine();
+        }
+
+        private static void LoadTestEntryPoint(ISupplyCollector supplyCollector, DataContainer dataContainer, TestInfo testInfo, int testIndex) {
+            Console.Write("Load testing... ");
+
+            var definition = testInfo.LoadTestDefinitions[testIndex];
+            DataCollection collection = new DataCollection(dataContainer, definition.DataCollectionName);
+
+            DataEntity entity = new DataEntity(definition.DataEntityName, DataType.String, "string", dataContainer, collection);
+
+            var samples = supplyCollector.CollectSample(entity, definition.SampleSize);
+            
+            Console.WriteLine($" - success, collected {samples.Count} samples.");
+            Console.WriteLine();
         }
 
         private static TestInfo GetTestInfoFromFile(string filename)
@@ -88,6 +179,9 @@ namespace SupplyCollectorTestHarness
                             break;
                         case "datacollectionmetrics":
                             testInfo.AddMetricsTest(lineParts);
+                            break;
+                        case "loadtest":
+                            testInfo.AddLoadTest(lineParts);
                             break;
                     }
                 }
@@ -161,6 +255,12 @@ namespace SupplyCollectorTestHarness
         private static void TestCollectSample(ISupplyCollector supplyCollector, DataContainer dataContainer, TestInfo testInfo)
         {
             Console.Write("Testing CollectSample() ");
+            if (testInfo.CollectSampleTestDefinitions.Count == 0)
+            {
+                Console.WriteLine(" - skipped.");
+                Console.WriteLine();
+                return;
+            }
 
             foreach (var definition in testInfo.CollectSampleTestDefinitions)
             {
@@ -188,6 +288,12 @@ namespace SupplyCollectorTestHarness
 
         private static void TestRandomSampling(ISupplyCollector supplyCollector, DataContainer dataContainer, TestInfo testInfo) {
             Console.Write("Testing CollectSample() - random sampling method");
+            if (testInfo.RandomSampleTestDefinitions.Count == 0)
+            {
+                Console.WriteLine(" - skipped.");
+                Console.WriteLine();
+                return;
+            }
 
             foreach (var definition in testInfo.RandomSampleTestDefinitions)
             {
@@ -227,6 +333,12 @@ namespace SupplyCollectorTestHarness
         private static void TestDataMetrics(ISupplyCollector supplyCollector, DataContainer dataContainer, TestInfo testInfo)
         {
             Console.Write("Testing GetDataCollectionMetrics() ");
+            if (testInfo.DataMetricsTestDefinitions.Count == 0)
+            {
+                Console.WriteLine(" - skipped.");
+                Console.WriteLine();
+                return;
+            }
 
             var metrics = supplyCollector.GetDataCollectionMetrics(dataContainer);
 
@@ -274,12 +386,14 @@ namespace SupplyCollectorTestHarness
             public List<CollectSampleTestDefinition> CollectSampleTestDefinitions { get; }
             public List<RandomSampleTestDefinition> RandomSampleTestDefinitions { get; }
             public List<DataMetricsTestDefinition> DataMetricsTestDefinitions { get; }
+            public List<LoadTestDefinition> LoadTestDefinitions { get; }
 
             public TestInfo()
             {
                 CollectSampleTestDefinitions = new List<CollectSampleTestDefinition>();
                 RandomSampleTestDefinitions = new List<RandomSampleTestDefinition>();
                 DataMetricsTestDefinitions = new List<DataMetricsTestDefinition>();
+                LoadTestDefinitions = new List<LoadTestDefinition>();
             }
 
             public void AddCollectSampleTest(string[] definitionValues)
@@ -305,6 +419,18 @@ namespace SupplyCollectorTestHarness
                 definition.SampleSize = Convert.ToInt32(definitionValues[3]);
                 
                 RandomSampleTestDefinitions.Add(definition);
+            }
+
+            public void AddLoadTest(string[] definitionValues)
+            {
+                var definition = new LoadTestDefinition();
+                definition.DataCollectionName = definitionValues[1].Trim();
+                definition.DataEntityName = definitionValues[2].Trim();
+                definition.SampleSize = Convert.ToInt32(definitionValues[3]);
+                definition.MaxMemoryUsageMb = Convert.ToInt32(definitionValues[4]);
+                definition.MaxRunTimeSec = Convert.ToInt32(definitionValues[5]);
+                
+                LoadTestDefinitions.Add(definition);
             }
 
             public void AddMetricsTest(string[] definitionValues)
@@ -345,6 +471,11 @@ namespace SupplyCollectorTestHarness
         }
 
         private class RandomSampleTestDefinition : SampleTestDefinition {
+        }
+
+        private class LoadTestDefinition : SampleTestDefinition {
+            public int MaxMemoryUsageMb { get; set; }
+            public int MaxRunTimeSec { get; set; }
         }
 
         private class DataMetricsTestDefinition {
