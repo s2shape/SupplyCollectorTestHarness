@@ -7,6 +7,6 @@ build:
   stage: build
   script:
     - dotnet build
-    - docker build -t itsplus/s2shape-test-harness .
+    - docker build --no-cache -t itsplus/s2shape-test-harness .
     - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
     - docker push itsplus/s2shape-test-harness
