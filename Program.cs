@@ -13,6 +13,30 @@ namespace SupplyCollectorTestHarness
 {
     class Program
     {
+        private static bool _debug = false;
+
+        private static Assembly Assembly_Resolving(AssemblyLoadContext context, AssemblyName name)
+        {
+            if (_debug)
+                Console.WriteLine($"[DEBUG] Resolving {name.FullName}");
+
+            var foundDlls = Directory.GetFileSystemEntries(new FileInfo(Environment.CurrentDirectory).FullName, name.Name + ".dll", SearchOption.AllDirectories);
+            if (foundDlls.Any())
+            {
+                if (_debug)
+                {
+                    foreach (var foundDll in foundDlls)
+                    {
+                        Console.WriteLine($"  resolved to {foundDll}");
+                    }
+                }
+
+                return context.LoadFromAssemblyPath(foundDlls[0]);
+            }
+
+            return context.LoadFromAssemblyName(name);
+        }
+
         static void Main(string[] args)
         {
             string filename = "test_harness.config";
@@ -26,8 +50,10 @@ namespace SupplyCollectorTestHarness
             Console.WriteLine();
 
             string supplyCollectorPath = Path.Combine(Environment.CurrentDirectory, testInfo.SupplyCollectorName + ".dll");
-            
-            Assembly supplyCollectorAssembly = Assembly.LoadFile(supplyCollectorPath);
+
+            AssemblyLoadContext.Default.Resolving += Assembly_Resolving;
+            Assembly supplyCollectorAssembly = AssemblyLoadContext.Default.LoadFromAssemblyPath(supplyCollectorPath);
+
             Type supplyCollectorType = supplyCollectorAssembly.GetType(String.Format("{0}.{0}", testInfo.SupplyCollectorName));
 
             ISupplyCollector supplyCollector = (ISupplyCollector)Activator.CreateInstance(supplyCollectorType);
