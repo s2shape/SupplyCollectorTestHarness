@@ -104,12 +104,18 @@ namespace SupplyCollectorTestHarness
             //Copy .dll
             var sourceDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
             var destFileName = Path.Combine(Environment.CurrentDirectory, "SupplyCollectorTestHarness.dll");
+            var configFileName = Path.Combine(Environment.CurrentDirectory, "SupplyCollectorTestHarness.runtimeconfig.json");
 
             bool exists = File.Exists(destFileName);
 
             File.Copy(
                 Path.Combine(sourceDir, "SupplyCollectorTestHarness.dll"),
                 destFileName,
+                true
+                );
+            File.Copy(
+                Path.Combine(sourceDir, "SupplyCollectorTestHarness.runtimeconfig.json"),
+                configFileName,
                 true
                 );
 
@@ -162,6 +168,7 @@ namespace SupplyCollectorTestHarness
 
             if (!exists) {
                 File.Delete(destFileName);
+                File.Delete(configFileName);
             }
 
             Console.WriteLine("All load tests passed.");
