@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -39,6 +40,7 @@ namespace SupplyCollectorTestHarness
 
         static void Main(string[] args)
         {
+            Console.WriteLine("SupplyCollectorTestHarness v." + typeof(Program).Assembly.GetName().Version);
             string filename = "test_harness.config";
             if (args.Length > 0) {
                 filename = args[args.Length - 1];
@@ -69,20 +71,26 @@ namespace SupplyCollectorTestHarness
                 }
             }
 
+            try {
+                TestDataStoreTypes(supplyCollector);
 
-            TestDataStoreTypes(supplyCollector);
+                TestConnection(supplyCollector, dataContainer);
 
-            TestConnection(supplyCollector, dataContainer);
+                TestGetSchema(supplyCollector, dataContainer, testInfo);
 
-            TestGetSchema(supplyCollector, dataContainer, testInfo);
+                TestCollectSample(supplyCollector, dataContainer, testInfo);
 
-            TestCollectSample(supplyCollector, dataContainer, testInfo);
+                TestRandomSampling(supplyCollector, dataContainer, testInfo);
 
-            TestRandomSampling(supplyCollector, dataContainer, testInfo);
+                TestDataMetrics(supplyCollector, dataContainer, testInfo);
 
-            TestDataMetrics(supplyCollector, dataContainer, testInfo);
+                TestMemoryUsageAndProcessingTime(testInfo);
 
-            TestMemoryUsageAndProcessingTime(testInfo);
+                Console.WriteLine("All tests passed.");
+            }
+            catch (Exception ex) {
+                Console.WriteLine($"FAIL! Err: {ex}");
+            }
         }
 
         private static void TestMemoryUsageAndProcessingTime(TestInfo testInfo) {
@@ -93,12 +101,24 @@ namespace SupplyCollectorTestHarness
                 return;
             }
 
+            //Copy .dll
+            var sourceDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            var destFileName = Path.Combine(Environment.CurrentDirectory, "SupplyCollectorTestHarness.dll");
+
+            bool exists = File.Exists(destFileName);
+
+            File.Copy(
+                Path.Combine(sourceDir, "SupplyCollectorTestHarness.dll"),
+                destFileName,
+                true
+                );
+
             for (int i = 0; i < testInfo.LoadTestDefinitions.Count; i++) {
                 var definition = testInfo.LoadTestDefinitions[i];
 
                 Console.WriteLine();
                 Console.Write($"#{i}. Loading {definition.SampleSize} samples... ");
-                var process = Process.Start(Assembly.GetExecutingAssembly().Location, $"-load-test {i} {testInfo.SupplyCollectorName}");
+                var process = Process.Start("dotnet", "SupplyCollectorTestHarness.dll -load-test " + i + " test_harness.config");
                 if (process == null)
                 {
                     throw new ApplicationException("Failed to start child process for load testing.");
@@ -138,6 +158,10 @@ namespace SupplyCollectorTestHarness
                 }
 
                 Console.WriteLine(" - success.");
+            }
+
+            if (!exists) {
+                File.Delete(destFileName);
             }
 
             Console.WriteLine("All load tests passed.");
@@ -464,12 +488,12 @@ namespace SupplyCollectorTestHarness
                 var definition = new DataMetricsTestDefinition();
                 definition.DataCollectionName = definitionValues[1].Trim();
                 definition.RowCount = Int64.Parse(definitionValues[2].Trim());
-                definition.TotalSize = Decimal.Parse(definitionValues[3].Trim());
+                definition.TotalSize = Decimal.Parse(definitionValues[3].Trim(), CultureInfo.InvariantCulture);
                 if (definitionValues[3].IndexOf(".") > 0) {
                     definition.TotalSizePrecision = definitionValues[3].Substring(definitionValues[3].IndexOf(".") + 1)
                         .Trim().Length;
                 }
-                definition.UsedSize = Decimal.Parse(definitionValues[4].Trim());
+                definition.UsedSize = Decimal.Parse(definitionValues[4].Trim(), CultureInfo.InvariantCulture);
                 if (definitionValues[4].IndexOf(".") > 0)
                 {
                     definition.UsedSizePrecision = definitionValues[3].Substring(definitionValues[4].IndexOf(".") + 1)
