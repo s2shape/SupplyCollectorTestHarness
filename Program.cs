@@ -124,7 +124,7 @@ namespace SupplyCollectorTestHarness
 
                 Console.WriteLine();
                 Console.Write($"#{i}. Loading {definition.SampleSize} samples... ");
-                var process = Process.Start("dotnet", "SupplyCollectorTestHarness.dll -load-test " + i + " test_harness.config");
+                var process = Process.Start("/bin/sh", "-c SupplyCollectorTestHarness -load-test " + i + " test_harness.config");
                 if (process == null)
                 {
                     throw new ApplicationException("Failed to start child process for load testing.");
