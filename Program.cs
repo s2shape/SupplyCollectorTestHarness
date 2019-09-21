@@ -46,6 +46,7 @@ namespace SupplyCollectorTestHarness
                 filename = args[args.Length - 1];
             }
 
+            Console.WriteLine($"   loading {filename}, args len={args.Length}...");
             TestInfo testInfo = GetTestInfoFromFile(filename);
 
             Console.WriteLine("Testing " + testInfo.SupplyCollectorName);
@@ -87,9 +88,11 @@ namespace SupplyCollectorTestHarness
                 TestMemoryUsageAndProcessingTime(testInfo);
 
                 Console.WriteLine("All tests passed.");
+                Environment.ExitCode = 0;
             }
             catch (Exception ex) {
                 Console.WriteLine($"FAIL! Err: {ex}");
+                Environment.ExitCode = 1;
             }
         }
 
@@ -124,7 +127,7 @@ namespace SupplyCollectorTestHarness
 
                 Console.WriteLine();
                 Console.Write($"#{i}. Loading {definition.SampleSize} samples... ");
-                var process = Process.Start("/bin/sh", "-c SupplyCollectorTestHarness -load-test " + i + " test_harness.config");
+                var process = Process.Start("/bin/sh", "-c 'SupplyCollectorTestHarness -load-test " + i + " test_harness.config'");
                 if (process == null)
                 {
                     throw new ApplicationException("Failed to start child process for load testing.");
