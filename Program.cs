@@ -171,6 +171,10 @@ namespace SupplyCollectorTestHarness
                     Thread.Sleep(1000);
                 }
 
+                if (process.ExitCode != 0) {
+                    throw new ApplicationException($"Process exited with error code {process.ExitCode}");
+                }
+
                 Console.WriteLine(" - success.");
             }
 
