@@ -15,13 +15,22 @@ namespace SupplyCollectorTestHarness
     class Program
     {
         private static bool _debug = false;
+        private static Dictionary<string, Assembly> _loadedAssemblies = new Dictionary<string, Assembly>();
 
         private static Assembly Assembly_Resolving(AssemblyLoadContext context, AssemblyName name)
         {
             if (_debug)
                 Console.WriteLine($"[DEBUG] Resolving {name.FullName}");
 
-            var foundDlls = Directory.GetFileSystemEntries(new FileInfo(Environment.CurrentDirectory).FullName, name.Name + ".dll", SearchOption.AllDirectories);
+            if (_loadedAssemblies.ContainsKey(name.Name))
+            {
+                return _loadedAssemblies[name.Name];
+            }
+
+            Assembly a = null;
+
+            var foundDlls = Directory.GetFileSystemEntries(new FileInfo(Environment.CurrentDirectory).FullName,
+                name.Name + ".dll", SearchOption.AllDirectories);
             if (foundDlls.Any())
             {
                 if (_debug)
@@ -32,10 +41,17 @@ namespace SupplyCollectorTestHarness
                     }
                 }
 
-                return context.LoadFromAssemblyPath(foundDlls[0]);
+                a = context.LoadFromAssemblyPath(foundDlls[0]);
+            }
+            else
+            {
+                throw new AssemblyMissingException($"Assembly {name} is missing!");
             }
 
-            return context.LoadFromAssemblyName(name);
+            if (a != null)
+                _loadedAssemblies.Add(name.Name, a);
+
+            return a;
         }
 
         static void Main(string[] args)
