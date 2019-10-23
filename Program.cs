@@ -86,6 +86,12 @@ namespace SupplyCollectorTestHarness
                     LoadTestEntryPoint(supplyCollector, dataContainer, testInfo, testIndex);
                     return;
                 }
+
+                for (int i = 0; i < args.Length - 1; i++) {
+                    if ("-connect".Equals(args[i], StringComparison.InvariantCultureIgnoreCase)) {
+                        testInfo.ConnectionString = args[++i];
+                    }
+                }
             }
 
             try {
